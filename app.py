@@ -2,91 +2,62 @@ import streamlit as st
 import pickle
 import pandas as pd
 import requests
-import time
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
+import os
 
-# -------------------------------
-# Create a session with retry logic
-# -------------------------------
-session = requests.Session()
-retries = Retry(
-    total=3,                # Total retries
-    backoff_factor=1,       # Wait 1s, then 2s, then 4s between retries
-    status_forcelist=[429, 500, 502, 503, 504],  # Retry on these HTTP errors
-)
-session.mount("https://", HTTPAdapter(max_retries=retries))
+# === SETTINGS ===
+# Replace this with your actual public Google Drive file ID
 
-# -------------------------------
-# Fetch movie poster from TMDB API
-# -------------------------------
-def fetch_poster(movie_id):
-    url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key=8265bd1679663a7ea12ac168da84d2e8&language=en-US"
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/115.0.0.0 Safari/537.36"
-        )
-    }
+SIMILARITY_URL = f"https://drive.google.com/file/d/19Z9z-HVujL2f_YN3WCjYZPOgAvHb5v7M/view?usp=sharing"
+LOCAL_SIM_FILE = "similarity.pkl"
 
-    for attempt in range(3):  # Manual retry loop
+# === DOWNLOAD FUNCTION ===
+def download_similarity():
+    """Downloads similarity.pkl if not already present locally."""
+    if not os.path.exists(LOCAL_SIM_FILE):
+        st.info("Downloading similarity file...")
         try:
-            print(f"Requesting (Attempt {attempt+1}): {url}")
-            response = session.get(url, headers=headers, timeout=10)
-            response.raise_for_status()
-            data = response.json()
+            r = requests.get(SIMILARITY_URL, stream=True)
+            r.raise_for_status()
+            with open(LOCAL_SIM_FILE, "wb") as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            st.success("Download complete.")
+        except Exception as e:
+            st.error(f"Failed to download similarity.pkl: {e}")
+            st.stop()
 
-            poster_path = data.get('poster_path')
-            if poster_path:
-                return "https://image.tmdb.org/t/p/w500/" + poster_path
-            else:
-                return "https://via.placeholder.com/500x750?text=No+Image"
-        except requests.exceptions.RequestException as e:
-            print(f"Error fetching poster (Attempt {attempt+1}): {e}")
-            time.sleep(1)  # Wait before retry
+# === LOAD DATA ===
+@st.cache_data
+def load_data():
+    movies_dict = pickle.load(open('movies_dict.pkl', 'rb'))
+    movies = pd.DataFrame(movies_dict)
 
-    # If all retries fail, return placeholder
-    return "https://via.placeholder.com/500x750?text=Error"
+    # Ensure similarity file exists before loading
+    download_similarity()
+    similarity = pickle.load(open(LOCAL_SIM_FILE, 'rb'))
+    return movies, similarity
 
-# -------------------------------
-# Recommend movies
-# -------------------------------
+# === RECOMMENDATION FUNCTION ===
 def recommend(movie):
     index = movies[movies['title'] == movie].index[0]
     distances = sorted(list(enumerate(similarity[index])), reverse=True, key=lambda x: x[1])
-
-    recommend_movies_names = []
-    recommend_movies_posters = []
-
+    recommended_movie_names = []
     for i in distances[1:6]:
-        movie_id = movies.iloc[i[0]].movie_id
-        print("Fetching poster for Movie ID:", movie_id)
-        recommend_movies_names.append(movies.iloc[i[0]].title)
-        recommend_movies_posters.append(fetch_poster(movie_id))
-        time.sleep(0.3)  # Small delay to avoid server overload
+        recommended_movie_names.append(movies.iloc[i[0]].title)
+    return recommended_movie_names
 
-    return recommend_movies_names, recommend_movies_posters
+# === STREAMLIT UI ===
+st.title('Movie Recommender System')
 
-# -------------------------------
-# Streamlit UI
-# -------------------------------
-st.header('🎬 Movie Recommender System')
+movies, similarity = load_data()
 
-# Load movie data
-movies = pickle.load(open('movies.pkl', 'rb'))
-similarity = pickle.load(open('similarity.pkl', 'rb'))
-
-movie_list = movies['title'].values
-selected_movie = st.selectbox(
-    'Please select a movie for recommendation',
-    movie_list
+selected_movie_name = st.selectbox(
+    'Select a movie to get recommendations:',
+    movies['title'].values
 )
 
-if st.button('Show Recommendation'):
-    recommended_movie_names, recommended_movie_posters = recommend(selected_movie)
-    cols = st.columns(5)
+if st.button('Recommend'):
+    recommendations = recommend(selected_movie_name)
+    for i in recommendations:
+        st.write(i)
 
-    for col, name, poster in zip(cols, recommended_movie_names, recommended_movie_posters):
-        col.text(name)
-        col.image(poster)
