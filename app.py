@@ -1,38 +1,30 @@
 import streamlit as st
 import pickle
 import pandas as pd
-import requests
+import gdown
 import os
 
 # === SETTINGS ===
-# Replace this with your actual public Google Drive file ID
-
-SIMILARITY_URL = f"https://drive.google.com/uc?export=download&id=19Z9z-HVujL2f_YN3WCjYZPOgAvHb5v7M"
+SIMILARITY_FILE_ID = "19Z9z-HVujL2f_YN3WCjYZPOgAvHb5v7M"  # Your file ID
 LOCAL_SIM_FILE = "similarity.pkl"
 
 # === DOWNLOAD FUNCTION ===
 def download_similarity():
-    """Downloads similarity.pkl if not already present locally."""
+    """Downloads similarity.pkl from Google Drive if not already present."""
     if not os.path.exists(LOCAL_SIM_FILE):
-        st.info("Downloading similarity file...")
-        try:
-            r = requests.get(SIMILARITY_URL, stream=True)
-            r.raise_for_status()
-            with open(LOCAL_SIM_FILE, "wb") as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    f.write(chunk)
-            st.success("Download complete.")
-        except Exception as e:
-            st.error(f"Failed to download similarity.pkl: {e}")
-            st.stop()
+        st.info("Downloading similarity file from Google Drive...")
+        url = f"https://drive.google.com/uc?id={SIMILARITY_FILE_ID}"
+        gdown.download(url, LOCAL_SIM_FILE, quiet=False)
+        st.success("Similarity file downloaded.")
 
 # === LOAD DATA ===
 @st.cache_data
 def load_data():
+    # Load movies file from local repo (must be <25 MB)
     movies_dict = pickle.load(open('movies_dict.pkl', 'rb'))
     movies = pd.DataFrame(movies_dict)
 
-    # Ensure similarity file exists before loading
+    # Ensure similarity.pkl exists before loading
     download_similarity()
     similarity = pickle.load(open(LOCAL_SIM_FILE, 'rb'))
     return movies, similarity
@@ -47,7 +39,7 @@ def recommend(movie):
     return recommended_movie_names
 
 # === STREAMLIT UI ===
-st.title('Movie Recommender System')
+st.title('🎬 Movie Recommender System')
 
 movies, similarity = load_data()
 
@@ -60,6 +52,3 @@ if st.button('Recommend'):
     recommendations = recommend(selected_movie_name)
     for i in recommendations:
         st.write(i)
-
-
-
