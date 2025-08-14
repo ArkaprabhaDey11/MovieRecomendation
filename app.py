@@ -8,7 +8,6 @@ import os
 # Replace this with your actual public Google Drive file ID
 
 SIMILARITY_URL = f"https://drive.google.com/uc?export=download&id=19Z9z-HVujL2f_YN3WCjYZPOgAvHb5v7M"
-"
 LOCAL_SIM_FILE = "similarity.pkl"
 
 # === DOWNLOAD FUNCTION ===
@@ -61,5 +60,6 @@ if st.button('Recommend'):
     recommendations = recommend(selected_movie_name)
     for i in recommendations:
         st.write(i)
+
 
 
